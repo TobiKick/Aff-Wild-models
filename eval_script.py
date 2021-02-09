@@ -5,6 +5,7 @@ from __future__ import print_function
 import tensorflow as tf
 import data_process
 import numpy as np
+import time
 
 slim = tf.contrib.slim
 
@@ -15,16 +16,16 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_integer('batch_size', 1, '''The batch size to use.''')
 
-tf.app.flags.DEFINE_integer('seq_length', 80, 'the sequence length: how many consecutive frames to use for the RNN; if the network is only CNN then put here any number you want : total_batch_size = batch_size * seq_length')
+tf.app.flags.DEFINE_integer('seq_length', 150, 'the sequence length: how many consecutive frames to use for the RNN; if the network is only CNN then put here any number you want : total_batch_size = batch_size * seq_length')
 
 tf.app.flags.DEFINE_integer('size', 96, 'dimensions of input images, e.g. 96x96')
 
-tf.app.flags.DEFINE_string('network',  'vggface_4096' , ' which network architecture we want to use,  pick between : vggface_4096, vggface_2000, affwildnet_vggface, affwildnet_resnet '     )                           
+tf.app.flags.DEFINE_string('network',  'affwildnet_vggface' , ' which network architecture we want to use,  pick between : vggface_4096, vggface_2000, affwildnet_vggface, affwildnet_resnet '     )                           
 
-tf.app.flags.DEFINE_string('input_file',  '/homes/input.csv' , 'the input file : it should be in the format: image_file_location,valence_value,arousal_value  and images should be jpgs'     )                           
+tf.app.flags.DEFINE_string('input_file',  './data_list_faces.csv' , 'the input file : it should be in the format: image_file_location,valence_value,arousal_value'     )                           
 
 
-tf.app.flags.DEFINE_string('pretrained_model_checkpoint_path', '/homes/model.ckpt-0',
+tf.app.flags.DEFINE_string('pretrained_model_checkpoint_path', './model/vggface_rnn/model.ckpt-0',
                            '''the pretrained model checkpoint path to restore,if there exists one  '''
                            '''''')
 
@@ -57,7 +58,7 @@ def evaluate():
     images_batch -= 128.0
     images_batch /= 128.0  # scale all pixel values in range: [-1,1]
 
-    images_batch = tf.reshape(images_batch,[-1,96,96,3])
+    images_batch = tf.reshape(images_batch,[-1,FLAGS.size,FLAGS.size,3])
     labels_batch = tf.reshape(labels_batch,[-1,2])
     
     if FLAGS.network == 'vggface_4096':
@@ -139,7 +140,7 @@ def evaluate():
              coord.request_stop()
          except Exception as e:
              coord.request_stop(e)
-
+         
          predictions = np.reshape(evaluated_predictions, (-1, 2))
          labels = np.reshape(evaluated_labels, (-1, 2))
          images = np.reshape(images, (-1))
@@ -150,18 +151,45 @@ def evaluate():
          print('Concordance on valence : {}'.format(conc_valence))
          print('Concordance on arousal : {}'.format(conc_arousal))
          print('Concordance on total : {}'.format((conc_arousal+conc_valence)/2))
-
-         mse_arousal = sum((predictions[:,1] - labels[:,1])**2)/len(labels[:,1])
-         print('MSE Arousal : {}'.format(mse_arousal))
-         mse_valence = sum((predictions[:,0] - labels[:,0])**2)/len(labels[:,0])
+         
+         mse_valence = np.true_divide(sum((predictions[:,0] - labels[:,0])**2), len(labels[:,1]), where=(len(labels[:,0])!=0))
          print('MSE Valence : {}'.format(mse_valence))
-        
+         mse_arousal = np.true_divide(sum((predictions[:,1] - labels[:,1])**2), len(labels[:,1]), where=(len(labels[:,1])!=0))
+         print('MSE Arousal : {}'.format(mse_arousal))
+         
+         import math
+         rmse_valence = math.sqrt(np.true_divide(sum((predictions[:,0] - labels[:,0])**2),len(labels[:,0]), where=(len(labels[:,0])!=0) ))
+         rmse_arousal = math.sqrt(np.true_divide(sum((predictions[:,1] - labels[:,1])**2),len(labels[:,1]), where=(len(labels[:,1])!=0) ))
+         print('RMSE on valence : {}'.format(rmse_valence))
+         print('RMSE on arousal : {}'.format(rmse_arousal))
+         
+         corr_valence = corr(predictions[:,0], labels[:,0])
+         corr_arousal = corr(predictions[:,1], labels[:,1])
+         print('Pearson CORR on valence : {}'.format(corr_valence))
+         print('Pearson CORR on arousal : {}'.format(corr_arousal))
 
-  
-    
+         predictions = np.multiply(predictions, 10)
+         np.savetxt("affwild_pred_valence.csv", predictions[:,0] , fmt='%.2f', delimiter=",")
+         np.savetxt("affwild_pred_arousal.csv", predictions[:,1] , fmt='%.2f', delimiter=",")  
 
     return conc_valence, conc_arousal, (conc_arousal+conc_valence)/2, mse_arousal, mse_valence
- 
+
+
+
+import math
+def corr(y_pred, y_true):
+    x = y_true
+    y = y_pred
+
+    xm, ym = x - x.mean(), y - y.mean()
+    r_num = sum(xm * ym)
+    x_square_sum = sum(xm * xm)
+    y_square_sum = sum(ym * ym)
+    r_den = math.sqrt(x_square_sum * y_square_sum)
+    r = np.true_divide(np.sum(np.true_divide(r_num, r_den, where=(r_den!=0))), r_num.size, where=(r_num.size!=0))
+    return r
+
+
 def concordance_cc2(r1, r2):
      mean_cent_prod = ((r1 - r1.mean()) * (r2 - r2.mean())).mean()
      return (2 * mean_cent_prod) / (r1.var() + r2.var() + (r1.mean() - r2.mean()) ** 2)

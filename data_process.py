@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 
 def read_labeled_image_list(image_list_file):
@@ -18,9 +19,12 @@ def read_labeled_image_list(image_list_file):
 
 	for line in f:
 		inputs = line.rstrip().split(',')
+
 		filenames.append(inputs[0])
-		labels_val.append(float(inputs[1]))
-		labels_ar.append(float(inputs[2]))
+		labels_val.append(np.true_divide(float(inputs[1]), 10))
+		labels_ar.append(np.true_divide(float(inputs[2]), 10))
+		# labels_val.append(float(inputs[1]))
+		# labels_ar.append(float(inputs[2]))
 	
 
 	labels = [list(a) for a in zip(labels_val, labels_ar)]
@@ -32,19 +36,20 @@ def read_labeled_image_list(image_list_file):
 
 def decodeRGB(input_queue,seq_length,size=96):
 	""" Args:
-        filename_and_label_tensor: A scalar string tensor.
-        Returns:
-        Three tensors: one with the decoded images, one with the corresponding labels and another with the image file locations
+		filename_and_label_tensor: A scalar string tensor.
+		Returns:
+		Three tensors: one with the decoded images, one with the corresponding labels and another with the image file locations
 	"""
 	images = []
 	labels = input_queue[1]
 	images_locations = input_queue[2]
 
 	for i in range(seq_length):
-	 file_content = tf.read_file(input_queue[0][i])
-	 image = tf.image.decode_jpeg(file_content, channels=3)
-	 image = tf.image.resize_images(image, tf.convert_to_tensor([size,size]))
-	 images.append(image)	
+		file_content = tf.io.read_file(input_queue[0][i])
+		# image = tf.image.decode_jpeg(file_content, channels=3)
+		image = tf.image.decode_png(file_content, channels=3)
+		image = tf.image.resize(image, tf.convert_to_tensor([size,size]))
+		images.append(image)	
 
 	return images,labels,images_locations
 
@@ -68,5 +73,6 @@ def make_rnn_input_per_seq_length_size(images,labels,seq_length):
 	        labs.append(b)
    
 	return ims,labs
+
 
 
